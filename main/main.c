@@ -1,26 +1,7 @@
-/*
- * SPDX-FileCopyrightText: 2022 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Unlicense OR CC0-1.0
- */
-/* HTTP File Server Example
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-//#include "freertos/event_groups.h"
-//#include "freertos/ringbuf.h"
-//#include "esp_system.h"
-//#include "lwip/err.h"
-//#include "lwip/sys.h"
 #include "freertos/queue.h"
 
 #include "esp_wifi.h"
@@ -30,7 +11,6 @@
 #include "esp_err.h"
 #include "nvs_flash.h"
 #include "esp_tls.h" 
-//#include "protocol_examples_common.h"
 #include "file_serving_example_common.h"
 
 #include "driver/gpio.h"
@@ -42,7 +22,6 @@
 
 #define SR_DELAY_US 1
 #define NUM_OF_ANODES 16
-//#define ANODES_IN_USE 0b0000000000111111
 #define ANODES_IN_USE 0b0011111100111111
 
 #define pin_segAR 14
@@ -147,7 +126,8 @@ void get_display_digits(double value, uint8_t * display_digits, uint32_t * dp_po
             display_digits[2] = value_int / 10ul % 10;
             *dp_pos = 2;     // Decimal point in 2nd position
         }
-        /*else if (value_int >= 0)        // 0.00 - 9.99
+        /* Commented out this section to restrict display to one decimal place
+        else if (value_int >= 0)        // 0.00 - 9.99
         {
             display_digits[0] = value_int / 100ul % 10;
             display_digits[1] = value_int / 10ul % 10;
