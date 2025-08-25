@@ -26,7 +26,56 @@ Once the ESP32 is up and running, a `temperatures.json` file will appear at whic
 ## Example `temperatures.json`
 
 ```yaml
-[{"temperature": "22.6"},{"temperature": "28.7"},{"temperature": "24.1"},{"temperature": "24.2"},{"temperature": "23.3"},{"temperature": "25.8"},{"temperature": "35.0"},{"temperature": "26.1"},{"temperature": "unknown"},{"temperature": "unknown"},{"temperature": "21.8"},{"temperature": "unknown"},{"temperature": "unknown"},{"temperature": "unknown"},{"temperature": "unknown"},{"temperature": "unknown"}]
+[
+  {
+    "temperature": "22.6"
+  },
+  {
+    "temperature": "28.9"
+  },
+  {
+    "temperature": "24.4"
+  },
+  {
+    "temperature": "24.5"
+  },
+  {
+    "temperature": "23.5"
+  },
+  {
+    "temperature": "25.9"
+  },
+  {
+    "temperature": "35.6"
+  },
+  {
+    "temperature": "26.9"
+  },
+  {
+    "temperature": "unknown"
+  },
+  {
+    "temperature": "unknown"
+  },
+  {
+    "temperature": "21.9"
+  },
+  {
+    "temperature": "unknown"
+  },
+  {
+    "temperature": "unknown"
+  },
+  {
+    "temperature": "unknown"
+  },
+  {
+    "temperature": "unknown"
+  },
+  {
+    "temperature": "unknown"
+  }
+]
 ```
 
 ## Example configuration for RESTful integration in Home Assistant (goes in `configuration.yaml`)
