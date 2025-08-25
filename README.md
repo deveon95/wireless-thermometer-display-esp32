@@ -11,6 +11,8 @@ The PCB has 8 displays but you can have as many temperatures as you like on the 
 
 Decoding of the Manchester protocol is not yet implemented in the ESP32. One day this might be done using the Remote Control Transceiver. In the meantime, an NKM2401 needs to be soldered onto the PCB's prototyping area to convert the 433MHz receiver's output to UART which is connected to the ESP32. The NKM2401 is a pre-programmed PIC12F508 and its firmware can be downloaded from [here](https://picaxe.com/downloads/nkm2401.hex.txt).
 
+The project receives temperature data from various transmitters including [wireless-thermometer-transmitter-dgl-lcd](https://github.com/deveon95/wireless-thermometer-transmitter-dgl-lcd).
+
 # Setup
 
 This project requires the ESP-IDF framework to be installed. Once done, a few simple commands from the ESP-IDF Command Line are required to configure the project.
