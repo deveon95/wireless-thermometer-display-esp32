@@ -1,11 +1,13 @@
 # wireless-thermometer-display-esp32
-ESP32-based temperature display with HTTPS web server support designed for RESTful
+ESP32-based temperature display with HTTP web server support designed for RESTful
+
+See [my blog](https://blog.schollar.uk/2025/09/more-wireless-temperature-displays-low.html) for more details about this project.
 
 ![photo of the assembled PCB](images/wireless-temperature-display.jpg)
 
 Loosely based on the [Simple HTTP File Server Example](https://github.com/espressif/esp-idf/blob/master/examples/protocols/http_server/file_serving/README.md) but with various code changes to improve the reliability of the wifi connection and to generate the dynamic JSON data with the current temperatures.
 
-The PCB is the same one used in (octopus-unit-rate-display)[https://github.com/deveon95/octopus-unit-rate-display].
+The PCB is the same one used in [octopus-unit-rate-display](https://github.com/deveon95/octopus-unit-rate-display).
 
 The PCB has 8 displays but you can have as many temperatures as you like on the web server. The default is 16.
 
