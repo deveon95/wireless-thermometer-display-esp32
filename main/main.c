@@ -61,6 +61,8 @@ typedef struct {
 } timer_info_t;
 
 
+bool wifi_connected = false;
+#define FETCHER_WDOG_LIMIT_IN_SECONDS (60*60)
 // brightness of the display (0 to 3)
 uint8_t display_brightness = 3;
 
@@ -71,7 +73,7 @@ uint8_t display_brightness = 3;
 #define ADC_HYSTERESIS 200
 static const adc_channel_t channel = ADC_CHANNEL_0;     //GPIO1 for ADC1
 static const adc_bits_width_t width = ADC_WIDTH_BIT_12;
-static const adc_atten_t atten = ADC_ATTEN_DB_11;
+static const adc_atten_t atten = ADC_ATTEN_DB_12;
 
 double temperatures[CONFIG_NUMBER_OF_TEMPERATURES];
 // Mask 
@@ -88,7 +90,12 @@ const int uart_buffer_size = (8 * 32);  // Must be greater than 128
 QueueHandle_t uart_queue;
 #define PATTERN_CHR_NUM    (3)         /*!< Set the number of consecutive and identical characters received by receiver which defines a UART pattern*/
 
-static const char *TAG = "example";
+static const char *TAG = "MAIN";
+static const char *TAG_FW = "FWD";
+static const char *TAG_WIFI_INIT_STA = "WIFI_INIT_STA";
+static const char *TAG_WIFI_EVENT_H = "WIFI_EVENT_H";
+static const char *TAG_UART = "UART_TASK";
+static const char *TAG_DISPLAY_TASK = "DISPLAY_TASK";
 
 /* FreeRTOS event group to signal when we are connected*/
 static EventGroupHandle_t s_wifi_event_group;
@@ -183,16 +190,16 @@ static bool IRAM_ATTR timer_group_isr_callback(void *args)
     {
         decimal_points = 0;
         // Right hand displays
-        get_display_digits(temperatures[1], &display_digits[0], &dp_temp, temperaturesReceived & 0x01); decimal_points |= dp_temp;
-        get_display_digits(temperatures[3], &display_digits[3], &dp_temp, temperaturesReceived & 0x02); decimal_points |= dp_temp << 3;
-        get_display_digits(temperatures[5], &display_digits[8], &dp_temp, temperaturesReceived & 0x04); decimal_points |= dp_temp << 8;
-        get_display_digits(temperatures[7], &display_digits[11], &dp_temp, temperaturesReceived & 0x08); decimal_points |= dp_temp << 11;
+        get_display_digits(temperatures[1], &display_digits[0], &dp_temp, temperaturesReceived & 0x02); decimal_points |= dp_temp;
+        get_display_digits(temperatures[3], &display_digits[3], &dp_temp, temperaturesReceived & 0x08); decimal_points |= dp_temp << 3;
+        get_display_digits(temperatures[5], &display_digits[8], &dp_temp, temperaturesReceived & 0x20); decimal_points |= dp_temp << 8;
+        get_display_digits(temperatures[7], &display_digits[11], &dp_temp, temperaturesReceived & 0x80); decimal_points |= dp_temp << 11;
         
         // Left hand display
-        get_display_digits(temperatures[0], &display_digits[16], &dp_temp, temperaturesReceived & 0x10); decimal_points |= dp_temp << 16;
-        get_display_digits(temperatures[2], &display_digits[19], &dp_temp, temperaturesReceived & 0x20); decimal_points |= dp_temp << 19;
-        get_display_digits(temperatures[4], &display_digits[24], &dp_temp, temperaturesReceived & 0x40); decimal_points |= dp_temp << 24;
-        get_display_digits(temperatures[6], &display_digits[27], &dp_temp, temperaturesReceived & 0x80); decimal_points |= dp_temp << 27;
+        get_display_digits(temperatures[0], &display_digits[16], &dp_temp, temperaturesReceived & 0x01); decimal_points |= dp_temp << 16;
+        get_display_digits(temperatures[2], &display_digits[19], &dp_temp, temperaturesReceived & 0x04); decimal_points |= dp_temp << 19;
+        get_display_digits(temperatures[4], &display_digits[24], &dp_temp, temperaturesReceived & 0x10); decimal_points |= dp_temp << 24;
+        get_display_digits(temperatures[6], &display_digits[27], &dp_temp, temperaturesReceived & 0x40); decimal_points |= dp_temp << 27;
                 
         
         // Get required segment patterns
@@ -337,7 +344,7 @@ static void example_timer_init(int group, int timer, bool auto_reload, int timer
 // Timer interrupt used for updating the display to allow for faster refresh rate
 void display_task(void * pvParameters)
 {
-    ESP_LOGI(TAG, "starting display_task on core %d", xPortGetCoreID());
+    ESP_LOGI(TAG_DISPLAY_TASK, "starting display_task on core %d", xPortGetCoreID());
     
     // Configure timer in this task to guarantee that correct core is used for ISR
     example_timer_init(TIMER_GROUP_0, TIMER_0, true, 2);
@@ -426,16 +433,16 @@ static void uart_event_task(void *pvParameters)
         //Waiting for UART event.
         if (xQueueReceive(uart_queue, (void *)&event, (TickType_t)portMAX_DELAY)) {
             bzero(dtmp, uart_buffer_size);
-            ESP_LOGI(TAG, "uart[%d] event:", uart_num);
+            ESP_LOGI(TAG_UART, "uart[%d] event:", uart_num);
             switch (event.type) {
             //Event of UART receiving data
             /*We'd better handler data event fast, there would be much more data events than
             other types of events. If we take too much time on data event, the queue might
             be full.*/
             case UART_DATA:
-                ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
+                ESP_LOGI(TAG_UART, "[UART DATA]: %d", event.size);
                 uart_read_bytes(uart_num, dtmp, event.size, portMAX_DELAY);
-                ESP_LOGI(TAG, "[DATA EVT]:");
+                ESP_LOGI(TAG_UART, "[DATA EVT]:");
                 uart_write_bytes(uart_num, (const char*) dtmp, event.size);
                 // Check packet for temperature data
                 if (event.size == 8)
@@ -443,7 +450,7 @@ static void uart_event_task(void *pvParameters)
                     // Validation: Second byte is 'C', checksum is correct, and tenths byte is less than 10
                     if (dtmp[1] == 'C' && dtmp[7] == (dtmp[2] + dtmp[3] + dtmp[4] + dtmp[5] + dtmp[6]) && dtmp[3] < 10 && dtmp[0] < CONFIG_NUMBER_OF_TEMPERATURES)
                     {
-                        ESP_LOGI(TAG, "Temperature packet received: ID %d Temperature %d.%d", dtmp[0], dtmp[2], dtmp[3]);
+                        ESP_LOGI(TAG_UART, "Temperature packet received: ID %d Temperature %d.%d", dtmp[0], dtmp[2], dtmp[3]);
                         bool sign = dtmp[2] >> 7;
                         // Convert magnitude to floating point
                         temperatures[dtmp[0]] = (dtmp[2] & 0x7f) + (dtmp[3] * 0.1);
@@ -456,7 +463,7 @@ static void uart_event_task(void *pvParameters)
                 break;
             //Event of HW FIFO overflow detected
             case UART_FIFO_OVF:
-                ESP_LOGI(TAG, "hw fifo overflow");
+                ESP_LOGI(TAG_UART, "hw fifo overflow");
                 // If fifo overflow happened, you should consider adding flow control for your application.
                 // The ISR has already reset the rx FIFO,
                 // As an example, we directly flush the rx buffer here in order to read more data.
@@ -465,7 +472,7 @@ static void uart_event_task(void *pvParameters)
                 break;
             //Event of UART ring buffer full
             case UART_BUFFER_FULL:
-                ESP_LOGI(TAG, "ring buffer full");
+                ESP_LOGI(TAG_UART, "ring buffer full");
                 // If buffer full happened, you should consider increasing your buffer size
                 // As an example, we directly flush the rx buffer here in order to read more data.
                 uart_flush_input(uart_num);
@@ -473,21 +480,21 @@ static void uart_event_task(void *pvParameters)
                 break;
             //Event of UART RX break detected
             case UART_BREAK:
-                ESP_LOGI(TAG, "uart rx break");
+                ESP_LOGI(TAG_UART, "uart rx break");
                 break;
             //Event of UART parity check error
             case UART_PARITY_ERR:
-                ESP_LOGI(TAG, "uart parity error");
+                ESP_LOGI(TAG_UART, "uart parity error");
                 break;
             //Event of UART frame error
             case UART_FRAME_ERR:
-                ESP_LOGI(TAG, "uart frame error");
+                ESP_LOGI(TAG_UART, "uart frame error");
                 break;
             //UART_PATTERN_DET
             case UART_PATTERN_DET:
                 uart_get_buffered_data_len(uart_num, &buffered_size);
                 int pos = uart_pattern_pop_pos(uart_num);
-                ESP_LOGI(TAG, "[UART PATTERN DETECTED] pos: %d, buffered size: %d", pos, buffered_size);
+                ESP_LOGI(TAG_UART, "[UART PATTERN DETECTED] pos: %d, buffered size: %d", pos, buffered_size);
                 if (pos == -1) {
                     // There used to be a UART_PATTERN_DET event, but the pattern position queue is full so that it can not
                     // record the position. We should set a larger queue size.
@@ -498,13 +505,13 @@ static void uart_event_task(void *pvParameters)
                     uint8_t pat[PATTERN_CHR_NUM + 1];
                     memset(pat, 0, sizeof(pat));
                     uart_read_bytes(uart_num, pat, PATTERN_CHR_NUM, 100 / portTICK_PERIOD_MS);
-                    ESP_LOGI(TAG, "read data: %s", dtmp);
-                    ESP_LOGI(TAG, "read pat : %s", pat);
+                    ESP_LOGI(TAG_UART, "read data: %s", dtmp);
+                    ESP_LOGI(TAG_UART, "read pat : %s", pat);
                 }
                 break;
             //Others
             default:
-                ESP_LOGI(TAG, "uart event type: %d", event.type);
+                ESP_LOGI(TAG_UART, "uart event type: %d", event.type);
                 break;
             }
         }
@@ -526,18 +533,18 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 		if (s_retry_num < CONFIG_ESP_MAXIMUM_RETRY) {
 				esp_wifi_connect();
 				s_retry_num++;
-				ESP_LOGI(TAG, "retry to connect to the AP");
+				ESP_LOGI(TAG_WIFI_EVENT_H, "retry to connect to the AP");
 		} else {
 				xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
 		}
-		ESP_LOGI(TAG,"connect to the AP fail");
-        //wifi_connected = false;
+		ESP_LOGI(TAG_WIFI_EVENT_H,"connect to the AP fail");
+        wifi_connected = false;
 	} else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
 		ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
-		ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+		ESP_LOGI(TAG_WIFI_EVENT_H, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
 		s_retry_num = 0;
 		xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
-        //wifi_connected = true;
+        wifi_connected = true;
 	}
 }
 
@@ -586,7 +593,7 @@ void wifi_init_sta(void)
 	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) );
 	ESP_ERROR_CHECK(esp_wifi_start() );
 
-	ESP_LOGI(TAG, "wifi_init_sta finished.");
+	ESP_LOGI(TAG_WIFI_INIT_STA, "wifi_init_sta finished.");
 
 	/* Waiting until either the connection is established (WIFI_CONNECTED_BIT) or connection failed for the maximum
 	 * number of re-tries (WIFI_FAIL_BIT). The bits are set by event_handler() (see above) */
@@ -599,11 +606,11 @@ void wifi_init_sta(void)
 	/* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
 	 * happened. */
 	if (bits & WIFI_CONNECTED_BIT) {
-		ESP_LOGI(TAG, "connected to ap SSID:%s password:%s", CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+		ESP_LOGI(TAG_WIFI_INIT_STA, "connected to ap SSID:%s password:%s", CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
 	} else if (bits & WIFI_FAIL_BIT) {
-		ESP_LOGI(TAG, "Failed to connect to SSID:%s, password:%s", CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
+		ESP_LOGI(TAG_WIFI_INIT_STA, "Failed to connect to SSID:%s, password:%s", CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD);
 	} else {
-		ESP_LOGE(TAG, "UNEXPECTED EVENT");
+		ESP_LOGE(TAG_WIFI_INIT_STA, "UNEXPECTED EVENT");
 	}
 
 	/* The event will not be processed after unregister */
@@ -612,6 +619,38 @@ void wifi_init_sta(void)
 	vEventGroupDelete(s_wifi_event_group);
 }
 
+
+/* Reset the microcontroller if the wifi has been disconnected for too long,
+ * e.g. if the WiFi access point is temporarily switched off,
+ * causing ESP_MAXIMUM_RETRY to be exceeded and the connection procedure to give up.
+ */
+void fetcher_watchdog_task(void * pvParameters)
+{
+    uint32_t secondsCounter = 0;
+    while(1)
+    {
+        // Non-blocking one-second delay
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // Check if any enabled unit rates haven't been obtained for any reason.
+        // Tomorrow's rates don't need to be checked here as they are checked hourly elsewhere.
+        if (!wifi_connected)
+        {
+            // Increment seconds counter and restart if limit is exceeded
+            secondsCounter++;
+            ESP_LOGI(TAG_FW, "Watchdog increment %lu", secondsCounter);
+            if (secondsCounter > FETCHER_WDOG_LIMIT_IN_SECONDS)
+            {
+                ESP_LOGI(TAG_FW, "Fetcher Watchdog reset");
+                esp_restart();
+            }
+        }
+        else
+        {
+            // Reset seconds counter if all expected unit rates have been obtained
+            secondsCounter = 0;
+        }
+    }
+}
 
 void app_main(void)
 {
@@ -687,11 +726,14 @@ void app_main(void)
     ESP_ERROR_CHECK(example_mount_storage(base_path));
     
     TaskHandle_t displayHandle;
+    TaskHandle_t fetcherWatchdogHandle;
     TaskHandle_t getLightLevelHandle;
     
     xTaskCreatePinnedToCore(display_task, "display_task", 2048, NULL, configMAX_PRIORITIES - 2, &displayHandle, 1);
     
     xTaskCreate(uart_event_task, "uart_event_task", 3072, NULL, 12, NULL);
+    
+    xTaskCreatePinnedToCore(fetcher_watchdog_task, "fetcher_watchdog_task", 4096, NULL, configMAX_PRIORITIES - 1, &fetcherWatchdogHandle, 1);
     
     xTaskCreatePinnedToCore(get_light_level_task, "get_light_level_task", 2048, NULL, configMAX_PRIORITIES - 4, &getLightLevelHandle, 1);
 
@@ -707,4 +749,9 @@ void app_main(void)
     ESP_LOGI(TAG, "File server started");
     
     
+
+	while(1)
+    {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
 }
